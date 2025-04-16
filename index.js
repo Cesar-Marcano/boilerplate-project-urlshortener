@@ -28,12 +28,26 @@ class Url {
   }
 
   static async create(original_url, short_url) {
-    await dns.lookup(original_url)
+    const url = new URL(original_url)
+    const host = url.hostname
 
-    return new Url(original_url, short_url)
+    if (!host) {
+      throw new Error('Invalid url hostname')
+    }
+
+    const addresses = await dns.lookup(host)
+
+    if (addresses && addresses.address) {
+      return new Url(original_url, short_url)
+    }
+    
+    throw new Error('Failed to lookup url hostname')
   }
 }
 
+/**
+ * @type {Url[]}
+ */
 var urls = []
 
 app.post('/api/shorturl', async function(req, res) {
@@ -41,17 +55,23 @@ app.post('/api/shorturl', async function(req, res) {
     const url = req.body.url
 
     const newUrl = await Url.create(url, urls.length)
-    
-    res.status(201).json(newUrl);
+
+    urls.push(newUrl)
+
+    res.status(201).json({ original_url: newUrl.original_url, short_url: newUrl.short_url });
   } catch (error) {
-    res.status(400).json({ error: 'invalid url' })
+    res.json({ error: 'invalid url' })
   }
 });
 
 app.get('/api/shorturl/:urlId', function(req, res) {
   const urlId = req.params.urlId
-
-  const url = urls.filter(url => url.short_url === urlId)[0]
+  
+  const url = urls.filter(url => url.short_url === parseInt(urlId))[0]
+  
+  if (!url) {
+    return res.status(404).json({ error: 'url not found' })
+  }
 
   return res.status(301).redirect(url.original_url)
 })
